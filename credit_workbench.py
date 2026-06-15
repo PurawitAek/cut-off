@@ -165,13 +165,18 @@ def seg_stats(df_seg: pd.DataFrame, cutoff, mode: str, PD, E31, ECON) -> dict:
 # ---- AQI ----
 def aqi_reverse(AQI) -> dict:
     cum = AQI["cc"] * 3
-    e91 = cum / (AQI["lgd"] / 100)
-    e31 = e91 / (AQI["pd"] / 100)
+    lgd = AQI["lgd"] / 100
+    pd_r = AQI["pd"] / 100
+    e91 = cum / lgd if lgd else 0.0
+    e31 = e91 / pd_r if pd_r else 0.0
     mob3 = e31 * AQI["lc"]
     return dict(cum=cum, e91=e91, e31=e31, mob3=mob3)
 
 def aqi_forward(obs, AQI) -> float:
-    e31 = obs / AQI["lc"]
+    lc = AQI["lc"]
+    if not lc:
+        return 0.0
+    e31 = obs / lc
     e91 = e31 * (AQI["pd"] / 100)
     cum = e91 * (AQI["lgd"] / 100)
     return cum / 3
@@ -334,9 +339,12 @@ def main():
         else:  # high-cardinality text
             q = st.sidebar.text_input(f"{col} contains")
             if q:
-                mask &= s.astype(str).str.contains(q, case=False, na=False); active.append(f'{col}: "{q}"')
+                mask &= s.astype(str).str.contains(q, case=False, na=False, regex=False); active.append(f'{col}: "{q}"')
 
     df = df_raw[mask].copy()
+    if not ECON:
+        st.error("At least one product row is required in the Economics table.")
+        st.stop()
     _default_prod = next(iter(ECON))
 
     # score
@@ -388,30 +396,48 @@ def main():
         return kstar
 
     if c3.button("Apply optimal to all", use_container_width=True):
-        _no_profit_segs = []
-        for seg in segments:
-            sdf = df[df["segment"] == seg]
-            if mode == "grade":
-                k = optimal_k(sdf)
-                if k == 0:
-                    _no_profit_segs.append(seg)
-                    k = 1  # grade slider min is 1; grade 1 = tightest possible cutoff
-                st.session_state[f"cut_{seg}"] = k
-            else:
-                k = optimal_k(sdf)
-                appr = sdf[sdf["grade"] <= k]
-                if len(appr):
-                    st.session_state[f"cut_{seg}"] = int(appr["score"].min())
+        if mode == "score" and score_col == "(none)":
+            st.warning("Score mode requires a mapped score column. Switch to grade mode or map a score column first.")
+        else:
+            _no_profit_segs = []
+            _no_aqi_segs = []
+            for seg in segments:
+                sdf = df[df["segment"] == seg]
+                _, kstar = grade_walk(sdf, PD, E31, ECON, grade_bands)
+                if opt_target.startswith("Profit ∧"):
+                    alim = aqi_limited_grade(sdf, thr, E31, grade_bands)
+                    k = min(kstar, alim)
+                    if k == 0:
+                        if kstar > 0:
+                            _no_aqi_segs.append(seg)
+                        else:
+                            _no_profit_segs.append(seg)
+                        k = 1
                 else:
-                    # no profitable grade → set threshold to data max (approve nobody)
-                    st.session_state[f"cut_{seg}"] = int(sdf["score"].max())
-                    _no_profit_segs.append(seg)
-        if _no_profit_segs:
-            st.warning(
-                f"No profitable grade found for: **{', '.join(_no_profit_segs)}**. "
-                "Check Economics — OPEX may exceed revenue at current loan size. "
-                "Cutoff set to reject-all for these segments."
-            )
+                    k = kstar
+                    if k == 0:
+                        _no_profit_segs.append(seg)
+                        k = 1
+                if mode == "grade":
+                    st.session_state[f"cut_{seg}"] = k
+                else:
+                    appr = sdf[sdf["grade"] <= k]
+                    if len(appr):
+                        st.session_state[f"cut_{seg}"] = int(appr["score"].min())
+                    else:
+                        st.session_state[f"cut_{seg}"] = int(sdf["score"].max())
+            if _no_profit_segs:
+                st.warning(
+                    f"No profitable grade found for: **{', '.join(_no_profit_segs)}**. "
+                    "Check Economics — OPEX may exceed revenue at current loan size. "
+                    "Cutoff set to reject-all for these segments."
+                )
+            if _no_aqi_segs:
+                st.warning(
+                    f"AQI constraint blocks all grades for: **{', '.join(_no_aqi_segs)}**. "
+                    "Every grade's blended %Ever31@MOB3 exceeds the threshold. "
+                    "Cutoff set to tightest grade (1) for these segments."
+                )
 
     # ---------- tabs ----------
     t_explore, t_cut, t_econ, t_aqi, t_dash = st.tabs(
@@ -688,13 +714,16 @@ def main():
         a3.metric("÷LGD → Ever91 3yr", f"{r['e91']:.2f}%")
         a4.metric("÷PD → Ever31 3yr", f"{r['e31']:.2f}%")
         a5.metric("×curve → Ever31@MOB3", f"{r['mob3']:.2f}%")
-        ref = [42.00, 48.55, 56.13, 1.10]
+        ref = [49.14, 65.52, 75.75, 2.48]
         got = [r["cum"], r["e91"], r["e31"], r["mob3"]]
-        at_default = abs(AQI["cc"]-14) < 1e-9 and abs(AQI["lgd"]-86.5) < 1e-9 and abs(AQI["pd"]-86.5) < 1e-9
+        at_default = (abs(AQI["cc"] - AQI_DEFAULT["cc"]) < 1e-9
+                      and abs(AQI["lgd"] - AQI_DEFAULT["lgd"]) < 1e-9
+                      and abs(AQI["pd"] - AQI_DEFAULT["pd"]) < 1e-9
+                      and abs(AQI["lc"] - AQI_DEFAULT["lc"]) < 1e-9)
         if at_default:
             ok = all(abs(a-b) < 0.05 for a, b in zip(got, ref))
             (st.success if ok else st.error)(
-                f"{'✓' if ok else '✗'} unit test  14.00 → 42.00 → 48.55 → 56.13 → 1.10")
+                f"{'✓' if ok else '✗'} unit test  {AQI_DEFAULT['cc']} → 49.14 → 65.52 → 75.75 → 2.48")
         else:
             st.info("Custom parameters — chain recomputed live")
 
@@ -1141,9 +1170,9 @@ def main():
                     * 100
                 )
                 if bad_rate_axis == "Credit limit":
-                    bad_df = bad_df[["By account", "By credit limit"]]
-                else:
                     bad_df = bad_df[["By credit limit", "By account"]]
+                else:
+                    bad_df = bad_df[["By account", "By credit limit"]]
                 st.line_chart(bad_df, height=300)
                 st.caption(f"Marginal bad rate (%) per grade. Focus: **{bad_rate_axis}**.")
 
