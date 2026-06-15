@@ -126,10 +126,12 @@ def grade_walk(df: pd.DataFrame, PD, E31, ECON, grade_bands=None) -> tuple[pd.Da
             cum_pbt=cumPBT,
         ))
     df_out = pd.DataFrame(out)
-    # k* = grade where cumulative PBT is highest (must beat 0 = approve-nobody baseline)
+    # k* = grade where CumPBT peaks, among non-empty grades only (spec: active = table[Count>0])
     kstar = 0
-    if not df_out.empty and df_out["cum_pbt"].max() > 0:
-        kstar = int(df_out.loc[df_out["cum_pbt"].idxmax(), "grade"])
+    if not df_out.empty:
+        active = df_out[df_out["n"] > 0]
+        if not active.empty and active["cum_pbt"].max() > 0:
+            kstar = int(df_out.loc[active["cum_pbt"].idxmax(), "grade"])
     return df_out, kstar
 
 
