@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 from config import AQI_DEFAULT, TEAL, BAD
-from core import aqi_reverse, aqi_forward, e31_of
+from core import aqi_reverse, aqi_forward, e31_of, resolve_e31
 
 
 def render_aqi(
@@ -12,6 +12,7 @@ def render_aqi(
     E31: list,
     grade_bands: list,
     thr: float,
+    E31_SEG: dict | None = None,
 ) -> None:
     r = aqi_reverse(AQI)
     st.subheader("Reverse — target → threshold")
@@ -45,10 +46,14 @@ def render_aqi(
               delta_color="inverse")
 
     st.subheader("AQI link to cutoff")
-    counts = df["grade"].value_counts()
+    segments = sorted(df["segment"].unique().tolist())
+    seg_counts = {seg: df[df["segment"] == seg]["grade"].value_counts() for seg in segments}
     capN = capE = 0.0; series = []; breach = None
     for g in grade_bands:
-        c = int(counts.get(g, 0)); capN += c; capE += c * e31_of(g, E31)
+        for seg in segments:
+            c = int(seg_counts[seg].get(g, 0))
+            E31_eff = resolve_e31(seg, E31, E31_SEG)
+            capN += c; capE += c * e31_of(g, E31_eff)
         bl = capE / capN if capN else 0
         series.append((g, bl))
         if bl > thr and breach is None:

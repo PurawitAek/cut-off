@@ -5,7 +5,10 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from config import TEAL, GOOD, BAD, MUTE
 from core import (grade_walk, aqi_limited_grade, approved_mask,
-                  pd_of, e31_of, pbt_per_acct, rev_per_acct, seg_stats, econ_of)
+                  pd_of, e31_of, pbt_per_acct, rev_per_acct, seg_stats, econ_of,
+                  grade_walk_portfolio, aqi_limited_grade_portfolio,
+                  pd_of_row, e31_of_row, pbt_per_acct_row, rev_per_acct_row,
+                  resolve_pd, resolve_e31, resolve_econ)
 
 
 def render_analytics(
@@ -18,6 +21,9 @@ def render_analytics(
     grade_bands: list,
     thr: float,
     thb,
+    PD_SEG: dict | None = None,
+    E31_SEG: dict | None = None,
+    ECON_SEG: dict | None = None,
 ) -> None:
     # ── Shared controls ──────────────────────────────────────────────────────
     dc1, dc2, dc3, dc4, dc5 = st.columns([1.4, 1.4, 1, 1, 1])
@@ -43,8 +49,9 @@ def render_analytics(
         st.warning("No data for the selected filters.")
         st.stop()
 
-    walk_dash, kstar_dash = grade_walk(df_dash, PD, E31, ECON, grade_bands)
-    aqi_grade_dash = aqi_limited_grade(df_dash, thr, E31, grade_bands)
+    walk_dash, kstar_dash = grade_walk_portfolio(df_dash, dash_segs, grade_bands, PD, E31, ECON,
+                                                 PD_SEG, E31_SEG, ECON_SEG)
+    aqi_grade_dash = aqi_limited_grade_portfolio(df_dash, dash_segs, thr, E31, grade_bands, E31_SEG)
 
     _cb_col = color_by.lower()
     groups = sorted(df_dash[_cb_col].unique().tolist()) if color_by != "None" else None
@@ -55,7 +62,15 @@ def render_analytics(
         out = {}
         for grp in groups:
             sub = df_dash[df_dash[grp_col] == grp]
-            w, _ = grade_walk(sub, PD, E31, ECON, grade_bands)
+            if grp_col == "segment":
+                PD_eff = resolve_pd(grp, PD, PD_SEG)
+                E31_eff = resolve_e31(grp, E31, E31_SEG)
+                ECON_eff = resolve_econ(grp, ECON, ECON_SEG)
+                w, _ = grade_walk(sub, PD_eff, E31_eff, ECON_eff, grade_bands)
+            else:
+                sub_segs = sorted(sub["segment"].unique().tolist())
+                w, _ = grade_walk_portfolio(sub, sub_segs, grade_bands, PD, E31, ECON,
+                                            PD_SEG, E31_SEG, ECON_SEG)
             out[grp] = (w.set_index("grade")[walk_col] * scale).values
         return pd.DataFrame(out, index=walk_dash["grade"].tolist())
 
@@ -65,14 +80,18 @@ def render_analytics(
     N_dash, A_dash = len(df_dash), len(df_appr_dash)
     appr_rate = A_dash / N_dash if N_dash else 0.0
     avg_grade_appr = df_appr_dash["grade"].mean() if A_dash else 0.0
-    e_bad_count = df_appr_dash["grade"].map(lambda g: pd_of(g, PD)).sum()
+    e_bad_count = df_appr_dash.apply(lambda r: pd_of_row(r, PD, PD_SEG), axis=1).sum() if A_dash else 0.0
     e_bad_rate = e_bad_count / A_dash if A_dash else 0.0
     pbt_total = df_appr_dash.apply(
-        lambda r: pbt_per_acct(r["product"], r["grade"], PD, ECON), axis=1
-    ).sum()
-    rev_total = df_appr_dash["product"].map(lambda p: rev_per_acct(p, ECON)).sum()
+        lambda r: pbt_per_acct_row(r, PD, ECON, PD_SEG, ECON_SEG), axis=1
+    ).sum() if A_dash else 0.0
+    rev_total = df_appr_dash.apply(
+        lambda r: rev_per_acct_row(r, ECON, ECON_SEG), axis=1
+    ).sum() if A_dash else 0.0
     pbt_pct = pbt_total / rev_total if rev_total else 0.0
-    blended_e31_dash = df_appr_dash["grade"].map(lambda g: e31_of(g, E31)).mean() if A_dash else 0.0
+    blended_e31_dash = (
+        df_appr_dash.apply(lambda r: e31_of_row(r, E31, E31_SEG), axis=1).mean() if A_dash else 0.0
+    )
     aqi_headroom = thr - blended_e31_dash
     eff_cutoff = (
         min(cutoffs.get(s, max(grade_bands)) for s in dash_segs)
@@ -82,19 +101,21 @@ def render_analytics(
     pbt_col   = "cum_pbt" if metric_view == "Cumulative" else "marg_pbt"
 
     # ── Inner sub-tabs ───────────────────────────────────────────────────────
-    da_overview, da_grade, da_segments, da_badrate = st.tabs(
-        ["Overview", "Grade", "Segments", "Bad Rate"]
-    )
+    DA_SUBS = ["Overview", "Grade", "Segments", "Bad Rate"]
+    sub = st.segmented_control("View", DA_SUBS, default=DA_SUBS[0], key="dash_section")
+    if not sub:
+        sub = DA_SUBS[0]
 
     # ---- Overview ----
-    with da_overview:
-        km1, km2, km3, km4, km5 = st.columns(5)
+    if sub == "Overview":
+        km1, km2, km3, km4, km5, km6 = st.columns(6)
         km1.metric("Approval", f"{appr_rate:.1%}", f"{A_dash:,} of {N_dash:,}")
         km2.metric("Avg approve grade", f"{avg_grade_appr:.2f}" if A_dash else "—")
         km3.metric("Expected bad", f"{e_bad_rate:.1%}", f"{e_bad_count:,.0f} accts",
                    delta_color="inverse")
-        km4.metric("Expected PBT", thb(pbt_total), f"{pbt_pct:.1%} of rev")
-        km5.metric("AQI headroom", f"{aqi_headroom*100:+.2f}pp",
+        km4.metric("Expected Revenue", thb(rev_total))
+        km5.metric("Expected PBT", thb(pbt_total), f"{pbt_pct:.1%} of rev")
+        km6.metric("AQI headroom", f"{aqi_headroom*100:+.2f}pp",
                    f"limit grade {aqi_grade_dash}", delta_color="off")
 
         cpbt_wide = _wide("cum_pbt", _cb_col if groups else None, scale=1 / 1e6)
@@ -122,7 +143,7 @@ def render_analytics(
             plt.close(fig_cpbt)
 
     # ---- Grade ----
-    with da_grade:
+    elif sub == "Grade":
         mv_label = "Cumulative" if metric_view == "Cumulative" else "Marginal"
         _has_score = "score" in df_dash.columns and df_dash["score"].nunique() > 1
         sc1, sc2 = st.columns(2)
@@ -265,7 +286,7 @@ def render_analytics(
         )
 
     # ---- Segments ----
-    with da_segments:
+    elif sub == "Segments":
         import altair as alt
         _seg_pool = sorted(df_dash["segment"].unique().tolist())
         _prod_pool = sorted(df_dash["product"].unique().tolist())
@@ -276,7 +297,10 @@ def render_analytics(
             for seg in _seg_pool:
                 sdf = df_dash[df_dash["segment"] == seg]
                 k_seg = cutoffs.get(seg, max(grade_bands))
-                stt = seg_stats(sdf, k_seg, mode, PD, E31, ECON)
+                PD_eff = resolve_pd(seg, PD, PD_SEG)
+                E31_eff = resolve_e31(seg, E31, E31_SEG)
+                ECON_eff = resolve_econ(seg, ECON, ECON_SEG)
+                stt = seg_stats(sdf, k_seg, mode, PD_eff, E31_eff, ECON_eff)
                 seg_rows.append(dict(
                     segment=seg,
                     approval_pct=round(stt["rate"] * 100, 2),
@@ -291,8 +315,8 @@ def render_analytics(
                 pdf = df_dash[df_dash["product"] == prod]
                 appr_pdf = pdf[approved_mask(pdf, cutoffs, mode)]
                 p = appr_pdf.apply(
-                    lambda r: pbt_per_acct(r["product"], r["grade"], PD, ECON), axis=1
-                ).sum()
+                    lambda r: pbt_per_acct_row(r, PD, ECON, PD_SEG, ECON_SEG), axis=1
+                ).sum() if len(appr_pdf) else 0.0
                 prod_rows.append(dict(product=prod, pbt_k=round(p / 1e3, 1)))
             prod_df = pd.DataFrame(prod_rows)
 
@@ -355,7 +379,7 @@ def render_analytics(
                                 use_container_width=True)
 
     # ---- Bad Rate ----
-    with da_badrate:
+    elif sub == "Bad Rate":
         bad_src_col = "marg_bad_acct" if bad_rate_axis == "Account" else "marg_bad_limit"
         if groups:
             bad_wide = _wide(bad_src_col, _cb_col, scale=100.0)
