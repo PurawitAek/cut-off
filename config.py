@@ -10,12 +10,22 @@ AQI_DEFAULT = dict(cc=16.38, lgd=75.0, pd=86.5, lc=0.0328)
 
 GRADE_BANDS = list(range(1, 11))
 
-TEAL = "#0E7C86"
-GOOD = "#2F9E6E"
+# Chart palette — TEAL marks "selected / in-scope" series (brand blue, from the
+# LINE BK mark), GOOD marks positive PBT/outcomes (brand green). Keeping both from
+# the same two-tone logo means dual-series charts (baseline vs uploaded, k* vs AQI
+# limit) read as brand-consistent rather than arbitrary.
+TEAL = "#0388E5"
+GOOD = "#12B83A"
 MID  = "#E8A33D"
 BAD  = "#D9483B"
 INK  = "#16202C"
 MUTE = "#5C6B7A"
+
+# UI theme tokens (sidebar/header/buttons) — exact LINE BK brand hexes.
+BRAND_GREEN = "#12CF35"
+BRAND_GREEN_DEEP = "#0E9E33"
+BRAND_BLUE = "#0388E5"
+APP_BG = "#F4F9F5"
 
 
 def thb(v: float) -> str:

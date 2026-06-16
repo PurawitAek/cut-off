@@ -1,7 +1,7 @@
 from __future__ import annotations
 import pandas as pd
 import streamlit as st
-from core import pd_of
+from core import pd_of, pd_of_row
 
 try:
     import plotly.graph_objects as go
@@ -10,7 +10,8 @@ except ImportError:
     _has_plotly = False
 
 
-def render_explore(df: pd.DataFrame, PD: list, grade_bands: list, seg_col: str) -> None:
+def render_explore(df: pd.DataFrame, PD: list, grade_bands: list, seg_col: str,
+                    PD_SEG: dict | None = None) -> None:
     st.subheader("Score Distribution & Bad Rate")
 
     if not _has_plotly:
@@ -33,8 +34,7 @@ def render_explore(df: pd.DataFrame, PD: list, grade_bands: list, seg_col: str) 
         _grp = _tmp.groupby("_bin", observed=True)
         _cnt = _grp.size().reindex(_labels, fill_value=0)
         _br = (
-            _grp["grade"]
-            .apply(lambda gs: gs.map(lambda g: pd_of(g, PD)).mean() * 100)
+            _grp.apply(lambda g: g.apply(lambda r: pd_of_row(r, PD, PD_SEG), axis=1).mean() * 100)
             .reindex(_labels, fill_value=0)
         )
 
@@ -97,7 +97,7 @@ def render_explore(df: pd.DataFrame, PD: list, grade_bands: list, seg_col: str) 
             _m2.metric("Avg grade", f"{_drill['grade'].mean():.2f}" if len(_drill) else "—")
             _m3.metric(
                 "Exp bad rate",
-                f"{_drill['grade'].map(lambda g: pd_of(g, PD)).mean():.1%}" if len(_drill) else "—",
+                f"{_drill.apply(lambda r: pd_of_row(r, PD, PD_SEG), axis=1).mean():.1%}" if len(_drill) else "—",
             )
             _m4.metric("Segments", _drill["segment"].nunique() if "segment" in _drill else "—")
 
@@ -110,10 +110,12 @@ def render_explore(df: pd.DataFrame, PD: list, grade_bands: list, seg_col: str) 
                 )
             with _dd2:
                 st.caption("By grade")
-                _gd = _drill.groupby("grade").agg(
-                    count=("grade", "size"),
-                    exp_bad_rate=("grade", lambda gs: f"{gs.map(lambda g: pd_of(g, PD)).mean():.1%}"),
-                ).reset_index()
+                _gd_rows = [
+                    dict(grade=g, count=len(sub),
+                         exp_bad_rate=f"{sub.apply(lambda r: pd_of_row(r, PD, PD_SEG), axis=1).mean():.1%}")
+                    for g, sub in _drill.groupby("grade")
+                ]
+                _gd = pd.DataFrame(_gd_rows)
                 st.dataframe(_gd, use_container_width=True, hide_index=True)
 
             with st.expander(f"Raw rows in [{_lo}, {_hi})", expanded=False):
