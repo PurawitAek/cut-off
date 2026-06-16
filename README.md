@@ -40,13 +40,16 @@ constrained to never breach an AQI-derived risk ceiling.
 
 ```
 cut-off/
-├── app.py                  # Entry point — data load, sidebar assumptions, filters,
+├── app.py                  # Entry point — orchestrates data load, sidebar calls,
 │                            # cutoff mode, section router. Run this with streamlit.
+├── sidebar.py               # Sidebar UI — file upload, column mapping, assumption
+│                             # editors (PD/E31/bands/economics/overrides/AQI), filters.
 ├── ui.py                   # LINE BK header/theme (CSS injection) — visual only.
 ├── config.py               # Default assumptions (PD, E31, Economics, AQI, grade
 │                            # bands) and shared color/format constants.
 ├── core.py                 # Pure calculation layer — no Streamlit import, fully
-│                            # unit-testable. Every KPI formula lives here.
+│                            # unit-testable. Every KPI formula and the column-
+│                            # mapping derivation (apply_column_mapping()) live here.
 ├── data.py                 # make_sample_data() — the built-in synthetic population.
 ├── make_default_xlsx.py    # Regenerates default_input.xlsx from config.py + data.py.
 ├── default_input.xlsx      # Shipped default dataset (applicants + reference tables).

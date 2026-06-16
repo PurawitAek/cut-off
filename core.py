@@ -240,6 +240,46 @@ def score_optimal(df_seg: pd.DataFrame, PD, E31, ECON, thr: float | None = None)
     return best_score if best_pbt > 0 else int(df_seg["score"].max())
 
 
+def apply_column_mapping(df: pd.DataFrame, score_col: str, grade_col: str, seg_col: str,
+                          prod_col: str, grade_bands: list, bands_df: pd.DataFrame,
+                          default_prod: str) -> pd.DataFrame:
+    """Derive score/grade/segment/product columns onto df from the sidebar's column mapping.
+
+    Mutates df in place (and returns it) — mirrors the mapping choices made in
+    sidebar.render_column_mapping() against the Score→Grade bands from
+    sidebar.render_assumptions().
+    """
+    if score_col != "(none)" and score_col in df.columns:
+        df["score"] = pd.to_numeric(df[score_col], errors="coerce").fillna(0)
+    elif "score" not in df.columns:
+        df["score"] = 0
+
+    if grade_col != "(derive from score)" and grade_col in df.columns:
+        df["grade"] = pd.to_numeric(df[grade_col], errors="coerce")
+    elif "grade" not in df.columns:
+        fallback = grade_bands[len(grade_bands) // 2] if grade_bands else 5
+        if len(bands_df) > 0:
+            grade_out = pd.Series(pd.NA, index=df.index, dtype="Int64")
+            for _, brow in bands_df.iterrows():
+                m = (df["score"] >= brow["score_min"]) & (df["score"] <= brow["score_max"])
+                grade_out[m] = int(brow["grade"])
+            df["grade"] = grade_out.fillna(fallback).astype(int)
+        else:
+            df["grade"] = fallback
+
+    if seg_col != "(none — one group)" and seg_col in df.columns:
+        df["segment"] = df[seg_col].astype(str).fillna("(unknown)")
+    elif "segment" not in df.columns:
+        df["segment"] = "(all)"
+
+    if prod_col != "(none — use default economics)" and prod_col in df.columns:
+        df["product"] = df[prod_col].astype(str).fillna(default_prod)
+    elif "product" not in df.columns:
+        df["product"] = default_prod
+
+    return df
+
+
 def aqi_reverse(AQI) -> dict:
     cum = AQI["cc"] * 3
     lgd = AQI["lgd"] / 100
