@@ -108,13 +108,14 @@ def render_analytics(
 
     # ---- Overview ----
     if sub == "Overview":
-        km1, km2, km3, km4, km5 = st.columns(5)
+        km1, km2, km3, km4, km5, km6 = st.columns(6)
         km1.metric("Approval", f"{appr_rate:.1%}", f"{A_dash:,} of {N_dash:,}")
         km2.metric("Avg approve grade", f"{avg_grade_appr:.2f}" if A_dash else "—")
         km3.metric("Expected bad", f"{e_bad_rate:.1%}", f"{e_bad_count:,.0f} accts",
                    delta_color="inverse")
-        km4.metric("Expected PBT", thb(pbt_total), f"{pbt_pct:.1%} of rev")
-        km5.metric("AQI headroom", f"{aqi_headroom*100:+.2f}pp",
+        km4.metric("Expected Revenue", thb(rev_total))
+        km5.metric("Expected PBT", thb(pbt_total), f"{pbt_pct:.1%} of rev")
+        km6.metric("AQI headroom", f"{aqi_headroom*100:+.2f}pp",
                    f"limit grade {aqi_grade_dash}", delta_color="off")
 
         cpbt_wide = _wide("cum_pbt", _cb_col if groups else None, scale=1 / 1e6)

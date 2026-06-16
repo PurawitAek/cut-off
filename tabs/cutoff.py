@@ -67,14 +67,15 @@ def render_cutoff(
     st.subheader("Portfolio KPIs")
     kpi = portfolio_stats(df, segments, cutoffs, mode, PD, E31, ECON, PD_SEG, E31_SEG, ECON_SEG)
     headroom = thr - kpi["blended_e31"]
-    k1, k2, k3, k4, k5, k6 = st.columns(6)
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
     k1.metric("Approval", f"{kpi['rate']:.1%}", f"{int(kpi['A']):,} of {kpi['N']:,}")
     k2.metric("Avg approve grade", f"{kpi['avg_g']:.2f}")
     k3.metric("Expected bad", f"{kpi['bad_rate']:.1%}", f"{kpi['bad']:,.0f} accts",
               delta_color="inverse")
     k4.metric("Expected loss", thb(kpi["loss"]))
-    k5.metric("Expected PBT", thb(kpi["pbt"]), f"{kpi['pbt_pct']:.1%} of rev")
-    k6.metric("AQI headroom", f"{headroom*100:+.2f}pp", f"{kpi['blended_e31']:.2f}% vs {thr:.2f}%",
+    k5.metric("Expected Revenue", thb(kpi["rev"]))
+    k6.metric("Expected PBT", thb(kpi["pbt"]), f"{kpi['pbt_pct']:.1%} of rev")
+    k7.metric("AQI headroom", f"{headroom*100:+.2f}pp", f"{kpi['blended_e31']:.2f}% vs {thr:.2f}%",
               delta_color="off")
 
     # Grade walk table
