@@ -76,8 +76,9 @@ def _whatif(df, segments, cutoffs, mode, PD, E31, ECON, grade_bands, thr, thb,
     sim_cutoffs = _seg_sliders(df, segments, cutoffs, mode, grade_bands, "sim")
 
     if st.button("Apply scenario to live cutoffs", type="primary", key="sim_apply"):
+        prefix = "cut_grade_" if mode == "grade" else "cut_score_"
         for seg, val in sim_cutoffs.items():
-            st.session_state[f"cut_{seg}"] = val
+            st.session_state[f"{prefix}{seg}"] = val
         st.success("Applied — switch to the Cutoff & KPIs tab to confirm.")
 
     st.divider()
@@ -133,8 +134,9 @@ def _champ_chal(df, segments, cutoffs, mode, PD, E31, ECON, grade_bands, thr, th
     chal_cutoffs = _seg_sliders(df, segments, champion, mode, grade_bands, "chal")
 
     if col_promote.button("Promote Challenger → live", type="primary"):
+        prefix = "cut_grade_" if mode == "grade" else "cut_score_"
         for seg, val in chal_cutoffs.items():
-            st.session_state[f"cut_{seg}"] = val
+            st.session_state[f"{prefix}{seg}"] = val
         st.success("Challenger promoted to live cutoffs.")
 
     st.divider()

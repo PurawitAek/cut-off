@@ -17,6 +17,7 @@ from core import (
 from data import make_sample_data
 from ui import inject_theme, render_header, MARK_PATH
 from sidebar import load_data, render_column_mapping, render_assumptions, render_global_filters
+from state_manager import load_state, save_state, reset_state
 
 _DEFAULT_XLSX = os.path.join(os.path.dirname(__file__), "default_input.xlsx")
 from tabs.explore    import render_explore
@@ -28,21 +29,38 @@ from tabs.simulator  import render_simulator
 from tabs.risk       import render_risk
 
 
+@st.dialog("Reset to defaults")
+def _confirm_reset():
+    st.warning(
+        "All cutoffs, assumptions, column mapping, and saved settings will be cleared "
+        "and returned to factory defaults. This cannot be undone."
+    )
+    col1, col2 = st.columns(2)
+    if col1.button("Reset everything", type="primary", use_container_width=True):
+        reset_state()
+        st.rerun()
+    if col2.button("Cancel", use_container_width=True):
+        st.rerun()
+
+
 def _cutoffs_from_state(df: pd.DataFrame, segments: list, mode: str, grade_bands: list) -> dict:
     """Read the live per-segment cutoff sliders from session_state without rendering them.
 
     Mirrors the default logic in tabs/cutoff.py's sliders so every section sees the
     same cutoffs regardless of whether the Cutoff & KPIs section is the active one.
+    Grade and score cutoffs use separate keys (cut_grade_* / cut_score_*) so switching
+    modes never overwrites one with a value from the other's range.
     """
     g_max = max(grade_bands) if grade_bands else 10
     cutoffs: dict = {}
     for seg in segments:
-        key = f"cut_{seg}"
         if mode == "grade":
+            key = f"cut_grade_{seg}"
             default = min(6, g_max)
             val = st.session_state.get(key, default)
             cutoffs[seg] = min(max(int(val), 1), g_max)
         else:
+            key = f"cut_score_{seg}"
             sdf = df[df["segment"] == seg]
             if len(sdf):
                 lo, hi = int(sdf["score"].min()), int(sdf["score"].max())
@@ -55,6 +73,7 @@ def _cutoffs_from_state(df: pd.DataFrame, segments: list, mode: str, grade_bands
 
 def main():
     st.set_page_config(page_title="Credit Decisioning Workbench", layout="wide", page_icon=MARK_PATH)
+    load_state()
     inject_theme()
     render_header(
         "Credit Decisioning Workbench",
@@ -87,6 +106,10 @@ def main():
     filters = render_global_filters(df_raw)
     mask, active = filters["mask"], filters["active"]
 
+    st.sidebar.divider()
+    if st.sidebar.button("↺ Reset to defaults", use_container_width=True):
+        _confirm_reset()
+
     df = df_raw[mask].copy()
     if not ECON:
         st.error("At least one product row is required in the Economics table.")
@@ -105,8 +128,10 @@ def main():
 
     c1, c2, c3 = st.columns([1.3, 1.3, 1])
     mode = c1.radio("Cutoff mode", ["grade", "score"], horizontal=True,
-                    help="grade: approve grades 1..k · score: approve score ≥ threshold")
-    opt_target = c2.radio("Optimize", ["Profit k*", "Profit ∧ AQI"], horizontal=True)
+                    help="grade: approve grades 1..k · score: approve score ≥ threshold",
+                    key="cutoff_mode")
+    opt_target = c2.radio("Optimize", ["Profit k*", "Profit ∧ AQI"], horizontal=True,
+                          key="opt_target")
 
     if c3.button("Apply optimal to all", use_container_width=True):
         if mode == "score" and score_col == "(none)":
@@ -135,7 +160,7 @@ def main():
                         if k == 0:
                             _no_profit_segs.append(seg)
                             k = 1
-                    st.session_state[f"cut_{seg}"] = k
+                    st.session_state[f"cut_grade_{seg}"] = k
                 else:
                     # score mode: sweep score thresholds directly per segment
                     aqi_thr = thr if opt_target.startswith("Profit ∧") else None
@@ -146,7 +171,7 @@ def main():
                         _no_profit_segs.append(seg)
                     elif aqi_thr is not None and stt["blended_e31"] > aqi_thr:
                         _no_aqi_segs.append(seg)
-                    st.session_state[f"cut_{seg}"] = s_opt
+                    st.session_state[f"cut_score_{seg}"] = s_opt
             if _no_profit_segs:
                 st.warning(
                     f"No profitable grade found for: **{', '.join(_no_profit_segs)}**. "
@@ -198,6 +223,8 @@ def main():
     elif section == "Simulator":
         render_simulator(df, segments, cutoffs, mode, PD, E31, ECON, grade_bands, thr, thb,
                          df_ref=df_default, PD_SEG=PD_SEG, E31_SEG=E31_SEG, ECON_SEG=ECON_SEG)
+
+    save_state()
 
 
 if __name__ == "__main__":
