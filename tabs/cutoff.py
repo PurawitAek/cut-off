@@ -36,11 +36,8 @@ def render_cutoff(
         with cols[i % 3]:
             if mode == "grade":
                 g_max = max(grade_bands) if grade_bands else 10
-                _gr_key = f"cut_{seg}"
-                if _gr_key in st.session_state:
-                    st.session_state[_gr_key] = min(max(int(st.session_state[_gr_key]), 1), g_max)
-                default = int(st.session_state.get(_gr_key, min(6, g_max)))
-                default = min(max(default, 1), g_max)
+                _gr_key = f"cut_grade_{seg}"
+                default = min(max(int(st.session_state.get(_gr_key, min(6, g_max))), 1), g_max)
                 k = st.slider(f"{seg}", 1, g_max, default, key=_gr_key)
                 cutoffs[seg] = k
                 stt = seg_stats(sdf, k, "grade", PD_eff, E31_eff, ECON_eff)
@@ -52,11 +49,8 @@ def render_cutoff(
                            f"rec k={rec} (k*={kstar}, AQI≤{alim})")
             else:
                 lo, hi = int(sdf["score"].min()), int(sdf["score"].max())
-                _sc_key = f"cut_{seg}"
-                if _sc_key in st.session_state:
-                    st.session_state[_sc_key] = min(max(int(st.session_state[_sc_key]), lo), hi)
-                default = int(st.session_state.get(_sc_key, 600))
-                default = min(max(default, lo), hi)
+                _sc_key = f"cut_score_{seg}"
+                default = min(max(int(st.session_state.get(_sc_key, 600)), lo), hi)
                 c = st.slider(f"{seg}", lo, hi, default, key=_sc_key)
                 cutoffs[seg] = c
                 stt = seg_stats(sdf, c, "score", PD_eff, E31_eff, ECON_eff)
