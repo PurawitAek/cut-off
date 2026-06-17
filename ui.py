@@ -41,9 +41,31 @@ def inject_theme() -> None:
         border-radius: 10px;
         padding: 0.8rem 1rem 0.65rem;
         box-shadow: 0 1px 2px rgba(18,30,20,0.05);
+        overflow: hidden;
+        min-width: 0;
     }}
-    [data-testid="stMetricValue"] {{ font-feature-settings: 'tnum' 1; color: {INK}; }}
-    [data-testid="stMetricLabel"] {{ color: {MUTE}; }}
+    [data-testid="stMetricValue"] {{
+        font-feature-settings: 'tnum' 1;
+        color: {INK};
+        font-size: clamp(0.78rem, 1.3vw, 1.05rem) !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }}
+    [data-testid="stMetricLabel"] {{
+        color: {MUTE};
+        font-size: clamp(0.65rem, 0.9vw, 0.8rem) !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }}
+    [data-testid="stMetricDelta"] {{
+        font-size: clamp(0.6rem, 0.8vw, 0.75rem) !important;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }}
+    [data-testid="column"] {{ min-width: 0; }}
 
     [data-testid="stSidebar"] {{
         background: #FFFFFF;

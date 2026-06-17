@@ -202,8 +202,15 @@ def render_analytics(
                     fig_sg2, ax_sg2 = plt.subplots(figsize=(5, 2.6))
                     ax_sg2.plot(_sg.index, _sg.values, "-o", color=TEAL, lw=2, ms=5,
                                 label="Avg score")
-                    ax_sg2.axvline(eff_cutoff + 0.5, color=BAD, ls="--", lw=1.5,
-                                   label=f"Grade cutoff ≤{eff_cutoff}")
+                    _g_min, _g_max = min(grade_bands), max(grade_bands)
+                    ax_sg2.set_xlim(_g_min - 0.5, _g_max + 0.5)
+                    if mode == "grade":
+                        ax_sg2.axvline(eff_cutoff + 0.5, color=BAD, ls="--", lw=1.5,
+                                       label=f"Grade cutoff ≤{eff_cutoff}")
+                    else:
+                        _sc_thr = min(cutoffs.get(s, 0) for s in dash_segs)
+                        ax_sg2.axhline(_sc_thr, color=BAD, ls="--", lw=1.5,
+                                       label=f"Score cutoff ≥{_sc_thr}")
                     ax_sg2.set_xlabel("Grade"); ax_sg2.set_ylabel("Score")
                     ax_sg2.set_xticks(grade_bands)
                     ax_sg2.legend(fontsize=7)
@@ -222,14 +229,25 @@ def render_analytics(
                 st.line_chart(cnt_wide, height=240)
             else:
                 fig_cnt, ax_cnt = plt.subplots(figsize=(5, 2.6))
-                bar_colors = [TEAL if g <= eff_cutoff else MUTE for g in walk_dash["grade"]]
+                if mode == "grade":
+                    bar_colors = [TEAL if g <= eff_cutoff else MUTE for g in walk_dash["grade"]]
+                else:
+                    _grade_appr = df_appr_dash.groupby("grade").size()
+                    _grade_total = df_dash.groupby("grade").size()
+                    bar_colors = [
+                        TEAL if _grade_appr.get(g, 0) > 0 else MUTE
+                        for g in walk_dash["grade"]
+                    ]
                 ax_cnt.bar(walk_dash["grade"], walk_dash[count_col], color=bar_colors, alpha=0.85)
-                ax_cnt.axvline(eff_cutoff + 0.5, color=BAD, ls="--", lw=1.5,
-                               label=f"Cutoff ≤{eff_cutoff}")
+                _g_min2, _g_max2 = min(grade_bands), max(grade_bands)
+                ax_cnt.set_xlim(_g_min2 - 0.5, _g_max2 + 0.5)
+                if mode == "grade":
+                    ax_cnt.axvline(eff_cutoff + 0.5, color=BAD, ls="--", lw=1.5,
+                                   label=f"Cutoff ≤{eff_cutoff}")
+                    ax_cnt.legend(fontsize=8)
                 ax_cnt.set_xlabel("Grade"); ax_cnt.set_ylabel("# applicants")
                 ax_cnt.set_xticks(walk_dash["grade"].tolist())
                 ax_cnt.spines[["top", "right"]].set_visible(False)
-                ax_cnt.legend(fontsize=8)
                 plt.tight_layout(); st.pyplot(fig_cnt); plt.close(fig_cnt)
 
         with ch2:
